@@ -1,137 +1,122 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Andújar - Sin Límites v0.2</title>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Andújar v0.3 - Tiempo Real</title>
 <style>
 :root{--gold:#c5a059;--bg:#121008;--paper:#e8d5a3}
-*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--paper);font-family:system-ui}
-#hud{position:sticky;top:0;background:#000d;padding:10px;border-bottom:2px solid var(--gold);z-index:20}
-.bar{height:12px;background:#2a2218;border-radius:6px;overflow:hidden;margin:4px 0}
-.fill{height:100%;transition:width.3s}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--paper);font-family:system-ui}
+#hud{position:sticky;top:0;background:#000e;padding:10px;border-bottom:2px solid var(--gold);z-index:20}
+.bar{height:12px;background:#2a2218;border-radius:6px;overflow:hidden;margin:4px 0}.fill{height:100%;transition:width.3s}
 #map{display:grid;grid-template-columns:repeat(10,1fr);gap:2px;padding:8px;max-width:600px;margin:auto}
 .tile{aspect-ratio:1;border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:9px;font-weight:bold;cursor:pointer;position:relative;border:1px solid #000}
-.village{background:#c5a059!important;color:#000;font-size:14px;box-shadow:0 0 15px var(--gold)}
-.river{background:#1a5a8a!important;box-shadow:inset 0 0 10px #0ff8}
-.river::after{content:"+20%";font-size:7px;color:#7ff}
+.village{background:var(--gold)!important;color:#000;font-size:13px;box-shadow:0 0 15px var(--gold)}
+.river{background:#1a5a8a!important;box-shadow:inset 0 0 10px #0ff8}.river::after{content:"+20%";font-size:7px;color:#7ff}
 .f100{background:#3d6b22}.f70{background:#6a6a2e}.f40{background:#5a4a2e}.f10{background:#2e2620;color:#6a5a4a}
-.farmed{outline:2px solid #7cff7c;outline-offset:-2px}
-.has-legion{outline:2px solid #ff4d4d}
-button{width:100%;padding:12px;border-radius:8px;border:0;font-weight:bold;margin-top:6px;cursor:pointer}
+.farmed{outline:2px solid #7cff7c;outline-offset:-2px}.has-legion{outline:2px solid #ff4d4d}
+button{width:100%;padding:11px;border-radius:8px;border:0;font-weight:bold;margin-top:6px;cursor:pointer}
 .bgold{background:var(--gold)}.bdark{background:#222;color:var(--paper);border:1px solid var(--gold)}
 .card{background:#1a1610;border:1px solid #8a6d3b55;padding:10px;border-radius:10px;margin-top:8px}
+#date{font-size:18px;color:var(--gold);font-weight:900;letter-spacing:.5px}
 </style>
 </head>
 <body>
 <div id="hud">
-<div style="display:flex;justify-content:space-between"><b>ANDÚJAR - 50ha</b><span id="year">Año 1 - Primavera</span></div>
+<div style="display:flex;justify-content:space-between;align-items:center"><b>ANDÚJAR</b><div id="date">Cargando...</div></div>
+<div style="font-size:12px;opacity:.8"><span id="realInfo"></span></div>
 <div class="bar"><div id="foodBar" class="fill" style="background:#4caf50;width:50%"></div></div>
 <div style="display:flex;gap:10px;font-size:13px">
-<div>Comida: <b id="food">500</b></div>
-<div>Prod: <b id="prod">0</b> / Cons: <b id="cons">0</b></div>
-<div>Balance: <b id="bal">0</b></div>
+<div>Comida: <b id="food">500</b></div><div>P: <b id="prod">0</b> / C: <b id="cons">0</b> = <b id="bal">0</b></div>
 </div>
 <div style="font-size:12px;margin-top:6px">
 Granjeros <span id="lF">40</span> <input id="rF" type="range" min="0" max="80" value="40" style="width:100%">
 Soldados <span id="lS">20</span> <input id="rS" type="range" min="0" max="80" value="20" style="width:100%">
-Libres: <b id="free">40</b> | <span id="msg" style="color:#ff8a8a"></span>
+Libres: <b id="free">40</b> <span id="msg" style="color:#ff8a8a"></span>
 </div>
 <div class="card">
-<b>LEGIÓN PERMANENTE: <span id="legN">0</span></b><br>
-<small>Río Guadalquivir = +20% prod en fila inferior. Selecciona parcela y envía legión.</small><br>
+LEGIÓN: <b id="legN">0</b> | <span id="legSt">En cuartel</span><br>
 <button class="bgold" id="btnAdd">Aportar soldados a Legión</button>
-<button class="bdark" id="btnDef">Defender aldea con legión (-10 comida/tur)</button>
+<button class="bdark" id="btnDef">Defender aldea (-10 comida/día)</button>
 <button class="bdark" id="btnRaid">SAQUEAR parcela seleccionada</button>
-<div>Estado: <span id="legSt">Esperando órdenes</span></div>
 </div>
 </div>
 <div id="map"></div>
-<div style="text-align:center;padding:10px;font-size:11px;opacity:.6">Marrón claro = vega fértil | Oscuro = sierra | Azul = Guadalquivir +20% | Borde verde = cultivado</div>
 <script>
-let F=40,S=20,LEG=0,FOOD=500,Y=1,sel=-1,defending=false;
+let F=40,S=20,LEG=0,FOOD=500,sel=-1,defending=false;
 let tiles=[];
-for(let y=0;y<10;y++){
- for(let x=0;x<10;x++){
-  if(x==4&&y==4){tiles.push({type:'village',fert:0,x,y});continue;}
-  let base = y<3?20 : y<6?60 : y<8?90 : 100;
-  let isRiver = y>=8;
-  tiles.push({type:'field',fert:base+Math.floor(Math.random()*20),river:isRiver,x,y,farmed:false});
- }
+for(let y=0;y<10;y++){for(let x=0;x<10;x++){
+ if(x==4&&y==4){tiles.push({type:'village',fert:0});continue;}
+ let base=y<3?20:y<6?60:y<8?90:100; tiles.push({type:'field',fert:base+Math.floor(Math.random()*20),river:y>=8,farmed:false});
+}}
+const ONE_GAME_DAY_MS = 6*60*60*1000; // 6h reales = 1 dia juego (1 real = 4 juego)
+let startReal = localStorage.getItem('andujar_start')? parseInt(localStorage.getItem('andujar_start')) : Date.now();
+if(!localStorage.getItem('andujar_start')) localStorage.setItem('andujar_start', startReal);
+let gameDaysPassed = parseInt(localStorage.getItem('andujar_days')||'0');
+
+function getGameDate(totalDays){
+ let year = Math.floor(totalDays/360)+1;
+ let dayOfYear = totalDays%360;
+ let month = Math.floor(dayOfYear/30)+1;
+ let day = (dayOfYear%30)+1;
+ let season = dayOfYear<90?'Primavera':dayOfYear<180?'Verano':dayOfYear<270?'Otoño':'Invierno';
+ let months=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+ return {year,month,day,season,months};
 }
 const mapEl=document.getElementById('map');
 function draw(){
  mapEl.innerHTML='';
  tiles.forEach((t,i)=>{
   let d=document.createElement('div');
-  let cls='tile ';
-  if(t.type=='village') cls+='village';
-  else {
-   cls+= t.fert>=80?'f100':t.fert>=50?'f70':t.fert>=20?'f40':'f10';
-   if(t.river) cls+=' river';
-   if(t.farmed) cls+=' farmed';
-   if(sel==i) cls+=' has-legion';
-  }
+  let cls='tile '+(t.type=='village'?'village':(t.fert>=80?'f100':t.fert>=50?'f70':t.fert>=20?'f40':'f10')+(t.river?' river':'')+(t.farmed?' farmed':'')+(sel==i?' has-legion':''));
   d.className=cls;
-  d.innerHTML=t.type=='village'?`🏛️<br>ANDÚJAR`:`${t.fert}%${t.river?' 🌊':''}`;
-  d.onclick=()=>{sel=i; draw(); legSt.innerText='Objetivo: parcela '+i+' ('+t.fert+'%'+(t.river?' +20% río':'')+')';};
+  d.innerHTML=t.type=='village'?`🏛️<br>ANDÚJAR`:`${t.fert}%`;
+  d.onclick=()=>{sel=i; draw();};
   mapEl.appendChild(d);
  });
 }
-function update(){
- F=parseInt(rF.value); S=parseInt(rS.value);
- if(F+S>100){S=100-F; rS.value=S;}
- let free=100-F-S;
- lF.innerText=F; lS.innerText=S; freeEl=document.getElementById('free'); freeEl.innerText=free;
- // asignar cultivos a las mejores parcelas
- let fields=tiles.filter(t=>t.type=='field').sort((a,b)=> (b.fert+(b.river?20:0)) - (a.fert+(a.river?20:0)));
+function updateHUD(){
+ let d=getGameDate(gameDaysPassed);
+ document.getElementById('date').innerHTML=`Día ${d.day} ${d.months[d.month-1]} Año ${d.year} <br><span style="font-size:12px">${d.season} - ${d.month}/${12}</span>`;
+ document.getElementById('realInfo').innerText=`Tiempo real: 1 día real = 4 días de juego | 1 día juego = 6h reales | Días totales jugados: ${gameDaysPassed}`;
+ let fields=tiles.filter(t=>t.type=='field').sort((a,b)=>(b.fert+(b.river?20:0))-(a.fert+(a.river?20:0)));
  tiles.forEach(t=>t.farmed=false);
- let toFarm=Math.min(F*2,50);
- let idx=0;
- while(toFarm>0 && idx<fields.length){fields[idx].farmed=true; toFarm-=1; idx++;}
- let prod=0;
- tiles.filter(t=>t.farmed).forEach(t=>{
-  let bonus=t.river?1.2:1;
-  let ef = (F*2>50?50/(F*2):1);
-  prod+= (t.fert/100)*40*bonus*ef;
- });
- prod+= LEG*1.5;
- let cons=free*1 + F*1 + S*2 + LEG*2 + (defending?10:0);
- document.getElementById('prod').innerText=Math.floor(prod);
- document.getElementById('cons').innerText=cons;
- let bal=Math.floor(prod-cons);
- document.getElementById('bal').innerText=(bal>0?'+':'')+bal;
+ let toFarm=Math.min(F*2,50),idx=0; while(toFarm>0&&idx<fields.length){fields[idx].farmed=true;toFarm--;idx++;}
+ let prod=0; tiles.filter(t=>t.farmed).forEach(t=>{let bonus=t.river?1.2:1; let ef=(F*2>50?50/(F*2):1); prod+=(t.fert/100)*40*bonus*ef;}); prod+=LEG*1.5;
+ let cons= (100-F-S)*1 + F*1 + S*2 + LEG*2 + (defending?10:0);
+ document.getElementById('prod').innerText=Math.floor(prod); document.getElementById('cons').innerText=cons;
+ let bal=Math.floor(prod-cons); document.getElementById('bal').innerText=(bal>0?'+':'')+bal;
  document.getElementById('bal').style.color=bal<0?'#ff4d4d':'#7cff7c';
- document.getElementById('msg').innerText=bal<-10?'¡HAMBRE!':'';
- document.getElementById('foodBar').style.width=Math.min(100,Math.max(5,FOOD/10))+'%';
  document.getElementById('food').innerText=Math.floor(FOOD);
+ document.getElementById('foodBar').style.width=Math.min(100,Math.max(5,FOOD/10))+'%';
  document.getElementById('legN').innerText=LEG;
+ document.getElementById('lF').innerText=F; document.getElementById('lS').innerText=S; document.getElementById('free').innerText=100-F-S;
+ draw();
  return bal;
 }
-rF.oninput=()=>{update();draw();}; rS.oninput=update;
-btnAdd.onclick=()=>{
- if(S<=0){alert('Sube soldados primero');return;}
- LEG+=S; S=0; rS.value=0; legSt.innerText='Legión reforzada hasta '+LEG; update();
-};
-btnDef.onclick=()=>{defending=!defending; legSt.innerText=defending?'Defendiendo aldea':'En cuartel'; btnDef.innerText=defending?'RETIRAR DEFENSA':'Defender aldea con legión (-10 comida/tur)';};
-btnRaid.onclick=()=>{
- if(sel==-1||tiles[sel].type=='village'){alert('Selecciona una parcela de campo');return;}
- if(LEG<3){alert('Necesitas al menos 3 en legión');return;}
- let t=tiles[sel];
- let gain=Math.floor(t.fert*0.8 + (t.river?15:0) + Math.random()*20);
- FOOD+=gain; t.fert=Math.max(5,t.fert-8);
- legSt.innerText='Saqueo: +'+gain+' comida en parcela '+sel;
- draw(); update();
-};
-setInterval(()=>{
- let bal=update();
- FOOD+=bal;
- if(FOOD<0){FOOD=0; LEG=Math.max(0,LEG-2); legSt.innerText='¡Deserción por hambre! Legión: '+LEG;}
- Y++; let estaciones=['Primavera','Verano','Otoño','Invierno'];
- document.getElementById('year').innerText='Año '+Math.floor(Y/4+1)+' - '+estaciones[Y%4];
- update();
-},4000);
-draw(); update();
+function tickDay(){
+ let bal=updateHUD(); FOOD+=bal;
+ if(FOOD<0){FOOD=0; LEG=Math.max(0,LEG-1);}
+ gameDaysPassed++; localStorage.setItem('andujar_days', gameDaysPassed); localStorage.setItem('andujar_food', FOOD);
+ updateHUD();
+}
+// Cargar comida guardada
+if(localStorage.getItem('andujar_food')) FOOD=parseFloat(localStorage.getItem('andujar_food'));
+
+// Calcula cuantos dias han pasado offline
+let now=Date.now(); let elapsed=now-startReal; let shouldBeDays=Math.floor(elapsed/ONE_GAME_DAY_MS);
+if(shouldBeDays>gameDaysPassed){let diff=shouldBeDays-gameDaysPassed; for(let k=0;k<diff;k++) tickDay();}
+
+rF.oninput=()=>{F=parseInt(rF.value); if(F+S>100){S=100-F; rS.value=S;} updateHUD();};
+rS.oninput=()=>{S=parseInt(rS.value); if(F+S>100){F=100-S; rF.value=F;} updateHUD();};
+btnAdd.onclick=()=>{if(S<=0)return; LEG+=S; S=0; rS.value=0; updateHUD(); legSt.innerText='Legión: '+LEG;};
+btnDef.onclick=()=>{defending=!defending; legSt.innerText=defending?'Defendiendo Andújar':'En cuartel';};
+btnRaid.onclick=()=>{if(sel==-1||tiles[sel].type=='village')return; if(LEG<3){alert('Min 3 legión');return;} let t=tiles[sel]; let gain=Math.floor(t.fert*0.8+(t.river?15:0)); FOOD+=gain; t.fert=Math.max(5,t.fert-8); updateHUD();};
+
+setInterval(()=>{ tickDay(); }, ONE_GAME_DAY_MS); // Cada 6h reales pasa 1 día de juego
+// Para que veas algo ahora sin esperar 6h, también avanzo 1 día cada 15s mientras tengas la pestaña abierta
+setInterval(()=>{ if(document.visibilityState=='visible') tickDay(); },15000);
+
+updateHUD();
 </script>
 </body>
 </html>
