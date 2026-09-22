@@ -17,4 +17,112 @@
 .badge{position:absolute;bottom:1px;font-size:6px;background:#000a;padding:1px 2px;border-radius:3px;left:1px;right:1px;text-align:center}
 button{width:100%;padding:9px;border-radius:8px;border:0;font-weight:bold;margin-top:6px;cursor:pointer;font-size:12px}
 .bgold{background:var(--gold)}.bred{background:#8a2a2a;color:#fff}.bdark{background:#222;color:var(--paper);border:1px solid var(--gold)}
-#modal{position:fixed;inset
+#modal{position:fixed;inset:0;background:#000c;display:none;align-items:center;justify-content:center;z-index:99}
+#modalBox{background:#1e1a12;border:2px solid var(--gold);padding:14px;border-radius:12px;width:92%;max-width:360px}
+#date{color:var(--gold);font-weight:900;font-size:12px}
+.res{display:flex;flex-wrap:wrap;gap:8px;font-size:12px}
+</style>
+</head>
+<body>
+<div id="hud">
+<div style="display:flex;justify-content:space-between"><b>ANDÚJAR v0.8</b><div id="date">Cargando...</div></div>
+<div class="res">
+<div>🍞<b id="food">500</b></div><div>🪵<b id="wood">200</b></div><div>🪨<b id="stone">80</b></div><div>🪙<b id="gold">100</b></div>
+</div>
+<div class="res" style="font-size:10px">
+<div>👨‍🌾 Pobres <b id="poorPop">0</b></div><div>👨‍💼 Acom <b id="medPop">0</b></div><div>👑 Nobles <b id="noblePop">0</b></div><div>⚔️ Soldados <b id="army">0</b></div>
+</div>
+<div class="bar"><div id="foodBar" class="fill" style="background:#4caf50;width:50%"></div></div>
+<div style="font-size:10px">Balance <b id="bal">0</b> | Obreros libres <b id="free">0</b>/<b id="workforce">0</b> | Impuestos <b id="tax">+0</b></div>
+<div style="font-size:9px;opacity:.6" id="realInfo"></div>
+</div>
+<div id="map"></div>
+<div id="modal"><div id="modalBox"></div></div>
+
+<script>
+let FOOD=500,WOOD=200,STONE=80,GOLD=100,SOLDIERS=0,tiles=[],sel=-1,gameDaysPassed=0;
+const ONE_DAY=6*60*60*1000;
+let startReal=Date.now();
+let startSaved=localStorage.getItem('andujar_start');
+if(startSaved){startReal=parseInt(startSaved);} else {localStorage.setItem('andujar_start',startReal);}
+gameDaysPassed=parseInt(localStorage.getItem('andujar_days')||'0');
+
+// Crear mapa
+for(let y=0;y<10;y++){for(let x=0;x<10;x++){
+ if(x==4&&y==4){tiles.push({type:'village',fert:100,workers:0,house:null,barracks:false});continue;}
+ let base=y<3?20:y<6?60:y<8?90:100; tiles.push({type:'field',fert:base+Math.floor(Math.random()*20),river:y>=8,workers:0,house:null,barracks:false});
+}}
+
+let load=JSON.parse(localStorage.getItem('andujar_save_v8')||'null');
+if(load){
+ try{FOOD=load.FOOD;WOOD=load.WOOD;STONE=load.STONE;GOLD=load.GOLD;SOLDIERS=load.SOLDIERS||0;
+ load.tiles.forEach((t,i)=>{if(tiles[i]&&t){tiles[i].workers=t.workers||0;tiles[i].house=t.house||null;tiles[i].barracks=t.barracks||false;if(t.fert)tiles[i].fert=t.fert;}});}catch(e){console.log('save corrupto')}
+}
+
+function taxPer(h){if(h=='small')return 2; if(h=='med')return 8; if(h=='big')return 24; return 0;}
+function getPops(){let poor=0,med=0,noble=0; tiles.forEach(t=>{if(t.house=='small')poor+=4; if(t.house=='med')med+=8; if(t.house=='big')noble+=16;}); return {poor,med,noble,total:poor+med+noble,workforce:poor+med};}
+function totalWorkers(){return tiles.reduce((a,t)=>a+(t.workers||0),0);}
+function getDateObj(d){let y=Math.floor(d/360)+1,dy=d%360,m=Math.floor(dy/30)+1,day=(dy%30)+1;let s=dy<90?'Prim':dy<180?'Ver':dy<270?'Oto':'Inv';let mo=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];return {y,m,day,s,mo};}
+
+function draw(){
+ let mapEl=document.getElementById('map'); if(!mapEl) return;
+ mapEl.innerHTML=''; tiles.forEach((t,i)=>{
+  let el=document.createElement('div'); let fertCls=t.fert>=80?'f100':t.fert>=50?'f70':t.fert>=20?'f40':'f10';
+  let cls='tile ';
+  if(t.type=='village') cls+='village'; else if(t.barracks) cls+='barracks'; else if(t.house) cls+='house'; else cls+=fertCls+(t.river?' river':'')+(t.workers?' farmed':'');
+  el.className=cls;
+  if(t.type=='village') el.innerHTML=`🏛️`;
+  else if(t.barracks) el.innerHTML=`⚔️<span class="badge">CUARTEL ${SOLDIERS}</span>`;
+  else if(t.house){let ic=t.house=='small'?'🏠':t.house=='med'?'🏘️':'🏰'; el.innerHTML=`${ic}<span class="badge">${t.house=='big'?'👑 NOBLE':t.house=='med'?'ACOM':'POBRE'} ${taxPer(t.house)}🪙</span>`;}
+  else el.innerHTML=`${t.fert}%<span class="badge">${t.workers?t.workers+'👨‍🌾':''}</span>`;
+  el.onclick=()=>openTile(i); mapEl.appendChild(el);
+ });
+ let pops=getPops();
+ document.getElementById('poorPop').innerText=pops.poor;
+ document.getElementById('medPop').innerText=pops.med;
+ document.getElementById('noblePop').innerText=pops.noble;
+ document.getElementById('army').innerText=SOLDIERS;
+ document.getElementById('free').innerText=Math.max(0,pops.workforce-totalWorkers());
+ document.getElementById('workforce').innerText=pops.workforce;
+}
+
+function openTile(i){
+ sel=i; let t=tiles[i]; if(t.type=='village') return;
+ let pops=getPops(); let freeWork=pops.workforce - totalWorkers();
+ let box=document.getElementById('modalBox');
+ if(t.barracks){
+  box.innerHTML=`<h3>⚔️ Cuartel - ${SOLDIERS} Soldados</h3><p>Un soldado no trabaja y consume 2🍞/día. Todos reclutables.</p><p>Reclutables: <b>${pops.total - totalWorkers() - SOLDIERS}</b></p><div style="display:flex;gap:6px"><button class="bred" onclick="train(1)">Reclutar 1</button><button class="bred" onclick="train(5)">Reclutar 5</button></div><button class="bdark" onclick="untrain(1)">Licenciar 1</button><button class="bdark" onclick="demolishBarracks()">Demoler cuartel</button><button class="bdark" onclick="closeModal()">Cerrar</button>`;
+ }else if(t.house){
+  box.innerHTML=`<h3>${t.house=='big'?'🏰 Noble - no trabaja':'Casa '+(t.house=='small'?'Pobre':'Acomodada')}</h3><p>Impuesto ${taxPer(t.house)}🪙/día</p><button class="bdark" onclick="demolish()">Demoler casa</button><button class="bdark" onclick="closeModal()">Cerrar</button>`;
+ }else{
+  let prod=Math.floor(20*(t.fert/100)*(t.river?1.2:1));
+  box.innerHTML=`<b>Parcela ${i} ${t.fert}%</b> - ${prod}🍞/obrero<br><small>Nobles no trabajan aquí</small><p>Obreros: <b id="wCount">${t.workers||0}</b> libres ${freeWork+(t.workers||0)}</p><input id="wRange" type="range" min="0" max="${freeWork+(t.workers||0)}" value="${t.workers||0}" style="width:100%"><button class="bgold" onclick="saveWorkers()">Asignar trabajo</button><hr><button class="bdark" onclick="build('small')">🏠 Pobre 4h 20🪵 2🪙</button><button class="bdark" onclick="build('med')">🏘️ Acom 8h 60🪵10🪨 8🪙</button><button class="bdark" onclick="build('big')">🏰 Noble 16h 140🪵40🪨 24🪙 NO trabaja</button><hr><button class="bred" onclick="buildBarracks()">⚔️ Cuartel 100🪵50🪨</button><button class="bdark" onclick="closeModal()">Cerrar</button>`;
+ }
+ document.getElementById('modal').style.display='flex';
+ let r=document.getElementById('wRange'); if(r) r.oninput=e=>{document.getElementById('wCount').innerText=e.target.value;};
+}
+function closeModal(){document.getElementById('modal').style.display='none';}
+function saveWorkers(){let v=document.getElementById('wRange'); if(v) tiles[sel].workers=parseInt(v.value); closeModal(); save(); updateHUD();}
+function build(type){let t=tiles[sel]; if(t.house||t.barracks) return; if(type=='small'){if(WOOD<20)return alert('Falta 🪵'); WOOD-=20;} if(type=='med'){if(WOOD<60||STONE<10)return alert('Falta'); WOOD-=60; STONE-=10;} if(type=='big'){if(WOOD<140||STONE<40)return alert('Falta'); WOOD-=140; STONE-=40;} t.house=type; closeModal(); save(); updateHUD();}
+function buildBarracks(){let t=tiles[sel]; if(t.house||t.barracks) return; if(WOOD<100||STONE<50)return alert('Falta 100🪵50🪨'); WOOD-=100; STONE-=50; t.barracks=true; closeModal(); save(); updateHUD();}
+function demolish(){let t=tiles[sel]; if(!t.house) return; if(t.house=='small')WOOD+=10; if(t.house=='med'){WOOD+=30;STONE+=5;} if(t.house=='big'){WOOD+=70;STONE+=20;} t.house=null; closeModal(); save(); updateHUD();}
+function demolishBarracks(){tiles[sel].barracks=false; WOOD+=50; STONE+=25; closeModal(); save(); updateHUD();}
+function train(n){let pops=getPops(); let rec=pops.total - totalWorkers() - SOLDIERS; if(rec<=0)return alert('No hay civiles'); let toTrain=Math.min(n,rec); SOLDIERS+=toTrain; save(); updateHUD(); openTile(sel);}
+function untrain(n){SOLDIERS=Math.max(0,SOLDIERS-n); save(); updateHUD(); openTile(sel);}
+function save(){localStorage.setItem('andujar_save_v8',JSON.stringify({FOOD,WOOD,STONE,GOLD,SOLDIERS,tiles})); localStorage.setItem('andujar_days',gameDaysPassed.toString());}
+function updateHUD(){
+ let d=getDateObj(gameDaysPassed); document.getElementById('date').innerHTML=`D${d.day} ${d.mo[d.m-1]} A${d.y} ${d.s}`;
+ let prod=0,tax=0; tiles.forEach(t=>{if(t.workers)prod+=t.workers*20*(t.fert/100)*(t.river?1.2:1); if(t.house)tax+=taxPer(t.house);});
+ let pops=getPops(); let cons=pops.total*1 + SOLDIERS*2; let bal=Math.floor(prod-cons);
+ document.getElementById('food').innerText=Math.floor(FOOD); document.getElementById('wood').innerText=Math.floor(WOOD); document.getElementById('stone').innerText=Math.floor(STONE); document.getElementById('gold').innerText=Math.floor(GOLD);
+ document.getElementById('tax').innerText='+'+tax; document.getElementById('bal').innerText=(bal>0?'+':'')+bal; document.getElementById('foodBar').style.width=Math.min(100,Math.max(5,FOOD/10))+'%';
+ document.getElementById('realInfo').innerText=`Próx día en ${Math.ceil((ONE_DAY-(Date.now()-startReal)%ONE_DAY)/3600000)}h - 1 obrero 20x fertilidad`;
+ draw(); return {bal,tax};
+}
+function tickDay(){let {bal,tax}=updateHUD(); FOOD+=bal; GOLD+=tax; if(FOOD<0)FOOD=0; gameDaysPassed++; save(); updateHUD();}
+
+updateHUD();
+setInterval(()=>{tickDay();},ONE_DAY);
+</script>
+</body>
+</html>
